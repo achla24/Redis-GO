@@ -1,0 +1,65 @@
+package server
+
+import (
+	"bufio"
+	"fmt"
+	"net"
+	"redis-go/internal/datastore"
+	"strings"
+)
+
+func HandleConnection(conn net.Conn, store *datastore.Store) {
+	defer conn.Close()
+	reader := bufio.NewReader(conn)
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Fprintln(conn, "ERR: connection closed")
+			return
+		}
+
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Fields(line)
+		cmd := strings.ToUpper(parts[0])
+
+		switch cmd {
+		case "SET":
+			if len(parts) < 3 {
+				fmt.Fprintln(conn, "ERR: usage SET key value")
+				continue
+			}
+			key, value := parts[1], parts[2]
+			store.Set(key, value, 0)
+			fmt.Fprintln(conn, "OK")
+
+		case "GET":
+			if len(parts) < 2 {
+				fmt.Fprintln(conn, "ERR: usage GET key")
+				continue
+			}
+			key := parts[1]
+			if val, ok := store.Get(key); ok {
+				fmt.Fprintln(conn, val)
+			} else {
+				fmt.Fprintln(conn, "(nil)")
+			}
+
+		case "DEL":
+			if len(parts) < 2 {
+				fmt.Fprintln(conn, "ERR: usage DEL key")
+				continue
+			}
+			key := parts[1]
+			store.Delete(key)
+			fmt.Fprintln(conn, "OK")
+
+		default:
+			fmt.Fprintln(conn, "ERR: unknown command")
+		}
+	}
+}
