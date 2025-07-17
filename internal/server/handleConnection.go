@@ -2,9 +2,10 @@ package server
 
 import (
 	"bufio"
-	"fmt"
 	"net"
 	"redis-go/internal/datastore"
+	"redis-go/internal/protocol"
+	"strconv" //for ascii to int conversion of ttl value in set
 	"strings"
 )
 
@@ -13,53 +14,52 @@ func HandleConnection(conn net.Conn, store *datastore.Store) {
 	reader := bufio.NewReader(conn)
 
 	for {
-		line, err := reader.ReadString('\n')
+		args, err := protocol.ParseRESP(reader)
 		if err != nil {
-			fmt.Fprintln(conn, "ERR: connection closed")
+			conn.Write([]byte(protocol.SerializeError("invalid command")))
 			return
 		}
 
-		line = strings.TrimSpace(line)
-		if line == "" {
+		if len(args) == 0 {
 			continue
 		}
 
-		parts := strings.Fields(line)
-		cmd := strings.ToUpper(parts[0])
+		cmd := strings.ToUpper(args[0])
 
 		switch cmd {
+		case "PING":
+			conn.Write([]byte(protocol.SerializeSimpleString("PONG")))
 		case "SET":
-			if len(parts) < 3 {
-				fmt.Fprintln(conn, "ERR: usage SET key value")
+			ttl := 0
+
+			if len(args) == 5 && strings.ToUpper(args[3]) == "EX" {
+				parsedTTL, err := strconv.Atoi(args[4])
+				if err != nil {
+					conn.Write([]byte(protocol.SerializeError("ERR invalid TTL")))
+					continue
+				}
+				ttl = parsedTTL
+			} else if len(args) != 3 {
+				conn.Write([]byte(protocol.SerializeError("ERR wrong number of arguments for 'SET' command")))
 				continue
 			}
-			key, value := parts[1], parts[2]
-			store.Set(key, value, 0)
-			fmt.Fprintln(conn, "OK")
 
+			store.Set(args[1], args[2], ttl)
+
+			conn.Write([]byte(protocol.SerializeSimpleString("OK")))
 		case "GET":
-			if len(parts) < 2 {
-				fmt.Fprintln(conn, "ERR: usage GET key")
+			if len(args) != 2 {
+				conn.Write([]byte(protocol.SerializeError("ERR wrong number of arguments for 'GET' command")))
 				continue
 			}
-			key := parts[1]
-			if val, ok := store.Get(key); ok {
-				fmt.Fprintln(conn, val)
+			val, ok := store.Get(args[1])
+			if !ok {
+				conn.Write([]byte(protocol.SerializeBulkString(""))) // nil response
 			} else {
-				fmt.Fprintln(conn, "(nil)")
+				conn.Write([]byte(protocol.SerializeBulkString(val)))
 			}
-
-		case "DEL":
-			if len(parts) < 2 {
-				fmt.Fprintln(conn, "ERR: usage DEL key")
-				continue
-			}
-			key := parts[1]
-			store.Delete(key)
-			fmt.Fprintln(conn, "OK")
-
 		default:
-			fmt.Fprintln(conn, "ERR: unknown command")
+			conn.Write([]byte(protocol.SerializeError("ERR unknown command")))
 		}
 	}
 }
