@@ -12,7 +12,23 @@ import (
 )
 
 func main() {
-	store := datastore.NewStore()
+	// 1. Initialize AOF Logger
+	aofLogger, err := datastore.NewAOF("appendonly.aof")
+	if err != nil {
+		log.Fatalf("Failed to open AOF file: %v", err)
+	}
+	defer aofLogger.Close()
+
+	// 2. Initialize the store with AOF logger
+	store := datastore.NewStore(aofLogger)
+
+	// 3. Load commands from AOF at startup
+	if err := datastore.LoadAOF(store, "appendonly.aof"); err != nil {
+		log.Fatalf("Failed to load AOF commands: %v", err)
+	}
+
+	
+	// store := datastore.NewStore()
 
 	// Start TTL cleaner in background
 	go func() {

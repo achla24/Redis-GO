@@ -2,7 +2,10 @@ package datastore
 
 import (
     "sync"
+     "fmt"
+    "strconv"
     "time"
+    // "strings"
 )
 
 type Value struct {
@@ -13,12 +16,14 @@ type Value struct {
 type Store struct {
     data map[string]Value
     mu   sync.RWMutex
+    aof *AOF // Append-Only File for persistence
 }
 
 // Constructor
-func NewStore() *Store {
+func NewStore(aof *AOF) *Store {
     return &Store{
         data: make(map[string]Value),
+        aof: aof,
     }
 }
 
@@ -36,6 +41,15 @@ func (s *Store) Set(key, value string, ttlSeconds int) {
     }
 
     s.data[key] = v
+
+    // Write to AOF
+    if s.aof != nil {
+        ttl := ""
+        if ttlSeconds > 0 {
+            ttl = " " + strconv.Itoa(ttlSeconds)
+        }
+        s.aof.WriteCommand(fmt.Sprintf("SET %s %s%s", key, value, ttl))
+    }
 }
 
 // GET command
@@ -61,6 +75,11 @@ func (s *Store) Delete(key string) {
     s.mu.Lock()
     defer s.mu.Unlock()
     delete(s.data, key)
+
+    // Write to AOF
+    if s.aof != nil {
+        s.aof.WriteCommand(fmt.Sprintf("DEL %s", key))
+    }
 }
 
 // TTL Cleaner Goroutine
