@@ -1,14 +1,46 @@
 package datastore
 
 import (
+	"bufio"
 	"fmt"
+	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
-	"strconv"
-	"bufio"
-
 )
+
+type AOFLogger struct {
+	file *os.File
+}
+
+func NewAOFLogger(filename string) *AOFLogger {
+	f, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		panic(fmt.Sprintf("failed to open AOF file: %v", err))
+	}
+	return &AOFLogger{file: f}
+}
+
+func (a *AOFLogger) WriteCommand(cmd string, args ...string) error {
+	line := cmd
+	for _, arg := range args {
+		line += " " + arg
+	}
+	line += "\n"
+	_, err := a.file.WriteString(line)
+	return err
+}
+
+var aofIgnoredCommands = map[string]bool{
+	"SUBSCRIBE": true,
+	// "PUBLISH":   true,
+}
+
+func ShouldLogToAOF(command string) bool {
+	_, ok := aofIgnoredCommands[strings.ToUpper(command)]
+	return !ok
+}
 
 type AOF struct {
 	file *os.File
@@ -66,7 +98,11 @@ func LoadAOF(store *Store, path string) error {
 			store.Delete(parts[1])
 
 		default:
-			return fmt.Errorf("unsupported command in AOF: %s", cmd)
+			// return fmt.Errorf("unsupported command in AOF: %s", cmd)
+
+			//fix(aof): skip unsupported PUBLISH commands to prevent server crash on startup
+			log.Printf("Skipping unsupported command in AOF: %s", line)
+			continue
 		}
 	}
 
