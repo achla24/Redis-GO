@@ -4,11 +4,33 @@ package protocol
 
 import (
 	"bufio"
-	
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 )
+
+// ParseCommand supports both RESP and plaintext commands
+func ParseCommand(reader *bufio.Reader) ([]string, error) {
+	peek, err := reader.Peek(1)
+	if err != nil {
+		return nil, err
+	}
+
+	if peek[0] == '*' {
+		return ParseRESP(reader)
+	} else {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			return nil, errors.New("empty command")
+		}
+		return strings.Fields(line), nil
+	}
+}
 
 // ParseRESP parses a RESP command from the connection
 func ParseRESP(reader *bufio.Reader) ([]string, error) {
@@ -22,6 +44,9 @@ func ParseRESP(reader *bufio.Reader) ([]string, error) {
 	}
 
 	numArgs, _ := strconv.Atoi(strings.TrimSpace(line[1:]))
+	if err != nil {
+		return nil, err
+	}
 
 	args := make([]string, 0, numArgs)
 	for i := 0; i < numArgs; i++ {

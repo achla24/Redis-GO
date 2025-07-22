@@ -14,12 +14,16 @@ func HandleConnection(conn net.Conn, store *datastore.Store) {
 	reader := bufio.NewReader(conn)
 
 	for {
-		// Use RESP parser instead of plain line reading
-		parts, err := protocol.ParseRESP(reader)
+		
+		
+
+		parts, err := protocol.ParseCommand(reader)
 		if err != nil {
 			conn.Write([]byte("-ERR connection closed\r\n"))
 			return
 		}
+
+		
 		if len(parts) == 0 {
 			continue
 		}
@@ -100,40 +104,6 @@ func HandleConnection(conn net.Conn, store *datastore.Store) {
 		}
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // package server
 
@@ -280,4 +250,3 @@ func HandleConnection(conn net.Conn, store *datastore.Store) {
 // // 		}
 // // 	}
 // // }
-
