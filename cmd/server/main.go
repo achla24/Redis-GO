@@ -5,17 +5,20 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"time"
-
+	"os"
+	"os/signal"
 	"redis-go/internal/datastore"
 	"redis-go/internal/server"
+	"syscall"
+	"time"
 )
 
 func main() {
 	// 1. Initialize AOF Logger
-	aofLogger, err := datastore.NewAOF("appendonly.aof")
+	aofLogger, err := datastore.NewAOF("../appendonly.aof") //added ../ coz otherwise aof text file will be added in cmd/server
 	if err != nil {
-		log.Fatalf("Failed to open AOF file: %v", err)
+		fmt.Printf("Failed to open AOF file: %v", err)
+		return
 	}
 	defer aofLogger.Close()
 
@@ -23,11 +26,10 @@ func main() {
 	store := datastore.NewStore(aofLogger)
 
 	// 3. Load commands from AOF at startup
-	if err := datastore.LoadAOF(store, "appendonly.aof"); err != nil {
+	if err := datastore.LoadAOF(store, "../appendonly.aof"); err != nil {
 		log.Fatalf("Failed to load AOF commands: %v", err)
 	}
 
-	
 	// store := datastore.NewStore()
 
 	// Start TTL cleaner in background
@@ -39,12 +41,17 @@ func main() {
 	}()
 
 	//start TCP server
+	fmt.Println("main.go starting")
 	ln, err := net.Listen("tcp", ":6379")
 	if err != nil {
 		log.Fatalf("Error starting server: %v", err)
 	}
 	fmt.Println("Server started on port 6379")
+	os.Stdout.Sync()
 	// fmt.Println("Running local key-value store...")
+
+	//for smooth shutdown
+	go handleShutdown()
 
 	for { //infinite loop => server run forever
 		conn, err := ln.Accept()
@@ -78,4 +85,12 @@ func main() {
 	// } else {
 	//     fmt.Println("GET name after TTL: not found (expired)")
 	// }
+}
+func handleShutdown() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+	fmt.Println("Gracefully shutting down...")
+	// FlushAOF() // if needed
+	os.Exit(0)
 }

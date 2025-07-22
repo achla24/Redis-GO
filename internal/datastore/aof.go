@@ -34,7 +34,7 @@ func (a *AOFLogger) WriteCommand(cmd string, args ...string) error {
 
 var aofIgnoredCommands = map[string]bool{
 	"SUBSCRIBE": true,
-	// "PUBLISH":   true,
+	"PUBLISH":   true,
 }
 
 func ShouldLogToAOF(command string) bool {
